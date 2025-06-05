@@ -14,12 +14,16 @@ date_range = st.slider("Select Lookback Period (Days):", min_value=30, max_value
 if ticker:
     # --- Fetch Data ---
     df = yf.download(ticker, period=f"{date_range}d")
+        st.write("Available columns:", df.columns.tolist())
     if df.empty:
         st.error("No data found. Please check the ticker symbol.")
     else:
-        df['20MA'] = df['Close'].rolling(window=20).mean()
-        df['Upper Band'] = df['20MA'] + 2 * df['Close'].rolling(window=20).std()
-        df['Lower Band'] = df['20MA'] - 2 * df['Close'].rolling(window=20).std()
+        if 'Close' in df.columns:
+            df['20MA'] = df['Close'].rolling(window=20).mean()
+            df['Upper Band'] = df['20MA'] + 2 * df['Close'].rolling(window=20).std()
+            df['Lower Band'] = df['20MA'] - 2 * df['Close'].rolling(window=20).std()
+        else:
+            st.error("❌ 'Close' column not found in the data. Unable to compute signals.")
         df['RSI'] = 100 - (100 / (1 + df['Close'].pct_change().add(1).rolling(14).apply(lambda x: (x[x > 1].sum() / x[x <= 1].sum()) if x[x <= 1].sum() != 0 else 0)))
         df.dropna(inplace=True)
 
