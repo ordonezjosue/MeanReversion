@@ -14,7 +14,7 @@ date_range = st.slider("Select Lookback Period (Days):", min_value=30, max_value
 if ticker:
     # --- Fetch Data ---
     df = yf.download(ticker, period=f"{date_range}d")
-        st.write("Available columns:", df.columns.tolist())
+    st.write("Available columns:", df.columns.tolist())
     if df.empty:
         st.error("No data found. Please check the ticker symbol.")
     else:
