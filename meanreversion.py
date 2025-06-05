@@ -54,4 +54,4 @@ if ticker:
         st.pyplot(fig)
 
         st.subheader("🔍 Recent Signals Table")
-        st.dataframe(df[['Close', 'RSI', '20MA', 'Upper Band', 'Lower Band', 'Call Signal', 'Put Signal']].tail(15))
+        st.dataframe(df[['Close', 'RSI', '20MA', 'Upper Band', 'Lower Band', 'Call Signal', 'Put Signal']].tail(15).reset_index())
