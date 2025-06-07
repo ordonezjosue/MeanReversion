@@ -3,20 +3,52 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import openai
 
+# --- Setup ---
 st.set_page_config(page_title="Mean Reversion Signal Tracker", layout="wide")
 st.title("🔁 Mean Reversion Signal Tracker")
+openai.api_key = st.secrets["OPENAI_API_KEY"]
 
 # --- User Inputs ---
 ticker = st.text_input("Enter Ticker Symbol (e.g. SPY, AAPL):", "SPY")
 date_range = st.slider("Select Lookback Period (Days):", min_value=30, max_value=365, value=90)
+
+# --- ChatGPT Recommendation Function ---
+def generate_strategy_recommendation(ticker, rsi, trend_direction, pe_ratio, premium_available):
+    prompt = f"""
+You are a professional options strategist. A trader is considering selling a put credit spread on {ticker} with:
+
+- Delta: 25
+- DTE: 30–45
+- Minimum Premium: $50
+- Exit Rules: 50% profit or 2x loss
+
+Current Data:
+- RSI: {rsi}
+- Trend: {trend_direction}
+- P/E Ratio: {pe_ratio}
+- Premium Available: ${premium_available}
+
+Give a concise recommendation on whether to take the trade. Use bullet points. Include pros/cons, and note if market conditions support mean reversion.
+"""
+
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3
+        )
+        return response.choices[0].message["content"]
+    except Exception as e:
+        return f"⚠️ ChatGPT error: {e}"
 
 # --- Fetch Data ---
 if ticker:
     df = yf.download(ticker, period=f"{date_range}d")
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
-    
+
     if df.empty:
         st.error("❌ No data found. Please check the ticker symbol.")
     elif 'Close' not in df.columns:
@@ -66,3 +98,12 @@ if ticker:
         signal_table = df[['Close', 'RSI', '20MA', 'Upper Band', 'Lower Band', 'Call Signal', 'Put Signal']].tail(15).copy()
         signal_table.index = signal_table.index.strftime("%Y-%m-%d")
         st.dataframe(signal_table.style.format("{:.2f}", subset=['Close', 'RSI', '20MA', 'Upper Band', 'Lower Band']))
+
+        # --- AI Strategy Recommendation ---
+        st.subheader("🤖 AI Strategy Recommendation")
+        trend_direction = "uptrend" if df['20MA'].iloc[-1] > df['20MA'].iloc[-20] else "downtrend"
+        rsi = round(latest['RSI'], 2)
+        pe_ratio = round(yf.Ticker(ticker).info.get('trailingPE', 20.0), 2)
+        premium_available = 55  # Placeholder - can be replaced with options API in future
+        ai_recommendation = generate_strategy_recommendation(ticker, rsi, trend_direction, pe_ratio, premium_available)
+        st.markdown(ai_recommendation)
