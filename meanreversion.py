@@ -3,15 +3,15 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import openai
 from datetime import datetime, timedelta
+from openai import OpenAI
 
-# --- Page Setup ---
+# --- Streamlit Config ---
 st.set_page_config(page_title="Mean Reversion Signal Tracker", layout="wide")
 st.title("🔁 Mean Reversion Signal Tracker + Strategy Scorer")
 
-# --- Load OpenAI key ---
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+# --- Initialize OpenAI Client (v1.x) ---
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # --- AI Strategy Function ---
 def generate_strategy_recommendation(ticker, rsi, trend_direction, pe_ratio, premium_available, score):
@@ -26,21 +26,21 @@ Strategy:
 
 Market Data:
 - RSI: {rsi}
-- Trend: {trend_direction}
+- Trend Direction: {trend_direction}
 - P/E Ratio: {pe_ratio}
 - Premium Estimate: ${premium_available}
-- Custom Score: {score}/100
+- Custom Signal Score: {score}/100
 
 Do you recommend the trade? Respond in bullet points with reasoning.
 """
 
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3
         )
-        return response.choices[0].message["content"]
+        return response.choices[0].message.content
     except Exception as e:
         return f"⚠️ ChatGPT error: {e}"
 
@@ -114,7 +114,7 @@ if ticker:
         signal_table.index = signal_table.index.strftime("%Y-%m-%d")
         st.dataframe(signal_table.style.format("{:.2f}", subset=['Close', 'RSI', '20MA', 'Upper Band', 'Lower Band']))
 
-        # --- Get Fundamental and Strategy Data ---
+        # --- Strategy Inputs ---
         st.subheader("🤖 AI Strategy Recommendation")
         trend_direction = "uptrend" if df['20MA'].iloc[-1] > df['20MA'].iloc[-20] else "downtrend"
         rsi = round(latest['RSI'], 2)
@@ -124,13 +124,11 @@ if ticker:
         if isinstance(earnings_date, list):  # Sometimes it's a list
             earnings_date = earnings_date[0]
         earnings_days_away = (pd.to_datetime(earnings_date) - pd.to_datetime(datetime.today())).days
-        ivr = 35  # Placeholder IVR value. Replace with live IV data later.
-        premium_available = 55  # Placeholder. Replace with live options data later.
+        ivr = 35  # Placeholder IVR
+        premium_available = 55  # Placeholder premium
 
-        # --- Score the Setup ---
         score = score_trade_setup(rsi, trend_direction, ivr, premium_available, earnings_days_away)
         st.markdown(f"**Custom Trade Score:** `{score}/100`")
 
-        # --- AI Opinion ---
         ai_response = generate_strategy_recommendation(ticker, rsi, trend_direction, pe_ratio, premium_available, score)
         st.markdown(ai_response)
