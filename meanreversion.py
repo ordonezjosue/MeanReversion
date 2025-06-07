@@ -11,22 +11,28 @@ st.title("🔁 Mean Reversion Signal Tracker")
 ticker = st.text_input("Enter Ticker Symbol (e.g. SPY, AAPL):", "SPY")
 date_range = st.slider("Select Lookback Period (Days):", min_value=30, max_value=365, value=90)
 
+# --- Fetch Data ---
 if ticker:
-    # --- Fetch Data ---
     df = yf.download(ticker, period=f"{date_range}d")
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
-    st.write("Available columns:", df.columns.tolist())
+    
     if df.empty:
-        st.error("No data found. Please check the ticker symbol.")
+        st.error("❌ No data found. Please check the ticker symbol.")
+    elif 'Close' not in df.columns:
+        st.error("❌ 'Close' column not found in the data.")
     else:
-        if 'Close' in df.columns:
-            df['20MA'] = df['Close'].rolling(window=20).mean()
-            df['Upper Band'] = df['20MA'] + 2 * df['Close'].rolling(window=20).std()
-            df['Lower Band'] = df['20MA'] - 2 * df['Close'].rolling(window=20).std()
-        else:
-            st.error("❌ 'Close' column not found in the data. Unable to compute signals.")
-        df['RSI'] = 100 - (100 / (1 + df['Close'].pct_change().add(1).rolling(14).apply(lambda x: (x[x > 1].sum() / x[x <= 1].sum()) if x[x <= 1].sum() != 0 else 0)))
+        # --- Technical Indicators ---
+        df['20MA'] = df['Close'].rolling(window=20).mean()
+        df['Upper Band'] = df['20MA'] + 2 * df['Close'].rolling(window=20).std()
+        df['Lower Band'] = df['20MA'] - 2 * df['Close'].rolling(window=20).std()
+
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        df['RSI'] = 100 - (100 / (1 + rs))
+
         df.dropna(inplace=True)
 
         # --- Signal Logic ---
@@ -35,23 +41,28 @@ if ticker:
 
         latest = df.iloc[-1]
 
+        # --- Signal Display ---
         st.subheader("📉 Latest Signal")
         if latest['Put Signal']:
-            st.markdown("### 🟥 PUT Debit Spread Suggested")
+            st.markdown("### 🟥 **PUT Debit Spread Suggested**")
         elif latest['Call Signal']:
-            st.markdown("### 🟩 CALL Debit Spread Suggested")
+            st.markdown("### 🟩 **CALL Debit Spread Suggested**")
         else:
             st.info("No clear mean reversion signal at this time.")
 
-        # --- Plot ---
+        # --- Chart ---
         st.subheader("📊 Price & Bollinger Bands")
         fig, ax = plt.subplots(figsize=(12, 5))
         ax.plot(df.index, df['Close'], label='Close', color='blue')
         ax.plot(df.index, df['20MA'], label='20MA', color='orange')
         ax.fill_between(df.index, df['Upper Band'], df['Lower Band'], color='gray', alpha=0.3)
-        ax.set_title(f"{ticker} Mean Reversion Chart")
+        ax.set_title(f"{ticker} Mean Reversion Chart", fontsize=14)
         ax.legend()
+        ax.grid(True)
         st.pyplot(fig)
 
+        # --- Signal Table ---
         st.subheader("🔍 Recent Signals Table")
-        st.dataframe(df[['Close', 'RSI', '20MA', 'Upper Band', 'Lower Band', 'Call Signal', 'Put Signal']].tail(15).reset_index())
+        signal_table = df[['Close', 'RSI', '20MA', 'Upper Band', 'Lower Band', 'Call Signal', 'Put Signal']].tail(15).copy()
+        signal_table.index = signal_table.index.strftime("%Y-%m-%d")
+        st.dataframe(signal_table.style.format("{:.2f}", subset=['Close', 'RSI', '20MA', 'Upper Band', 'Lower Band']))
