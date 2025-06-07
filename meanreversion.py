@@ -36,7 +36,7 @@ Do you recommend the trade? Respond in bullet points with reasoning.
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-3.5-turbo",  # ✅ Updated here
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3
         )
