@@ -4,31 +4,34 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import openai
+from datetime import datetime, timedelta
 
-# --- Streamlit Config ---
+# --- Page Setup ---
 st.set_page_config(page_title="Mean Reversion Signal Tracker", layout="wide")
-st.title("🔁 Mean Reversion Signal Tracker")
+st.title("🔁 Mean Reversion Signal Tracker + Strategy Scorer")
 
-# --- Load API Key from Streamlit Secrets ---
+# --- Load OpenAI key ---
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
 # --- AI Strategy Function ---
-def generate_strategy_recommendation(ticker, rsi, trend_direction, pe_ratio, premium_available):
+def generate_strategy_recommendation(ticker, rsi, trend_direction, pe_ratio, premium_available, score):
     prompt = f"""
-You are a professional options strategist. A trader is considering selling a put credit spread on {ticker} with:
+You are a professional options strategist. A trader is evaluating a put credit spread on {ticker}.
 
-- Delta: 25
-- DTE: 30–45
-- Minimum Premium: $50
-- Exit Rules: 50% profit or 2x loss
+Strategy:
+- 25 delta put credit spread
+- 30–45 DTE
+- Minimum premium: $50
+- Exit: 50% profit or 2x loss
 
-Current Market Info:
+Market Data:
 - RSI: {rsi}
-- Trend Direction: {trend_direction}
+- Trend: {trend_direction}
 - P/E Ratio: {pe_ratio}
-- Premium Available: ${premium_available}
+- Premium Estimate: ${premium_available}
+- Custom Score: {score}/100
 
-Should they sell the put credit spread now? Respond with a clear YES or NO and explain in concise bullet points with pros and cons.
+Do you recommend the trade? Respond in bullet points with reasoning.
 """
 
     try:
@@ -41,7 +44,17 @@ Should they sell the put credit spread now? Respond with a clear YES or NO and e
     except Exception as e:
         return f"⚠️ ChatGPT error: {e}"
 
-# --- User Inputs ---
+# --- Trade Setup Scoring Function ---
+def score_trade_setup(rsi, trend, ivr, premium, earnings_days_away):
+    score = 0
+    if 35 <= rsi <= 60: score += 20
+    if trend == "uptrend": score += 20
+    if ivr >= 30: score += 25
+    if premium >= 50: score += 20
+    if earnings_days_away > 7: score += 15
+    return score
+
+# --- Inputs ---
 ticker = st.text_input("Enter Ticker Symbol (e.g. SPY, AAPL):", "SPY")
 date_range = st.slider("Select Lookback Period (Days):", min_value=30, max_value=365, value=90)
 
@@ -101,12 +114,23 @@ if ticker:
         signal_table.index = signal_table.index.strftime("%Y-%m-%d")
         st.dataframe(signal_table.style.format("{:.2f}", subset=['Close', 'RSI', '20MA', 'Upper Band', 'Lower Band']))
 
-        # --- AI Strategy Recommendation ---
+        # --- Get Fundamental and Strategy Data ---
         st.subheader("🤖 AI Strategy Recommendation")
         trend_direction = "uptrend" if df['20MA'].iloc[-1] > df['20MA'].iloc[-20] else "downtrend"
         rsi = round(latest['RSI'], 2)
-        pe_ratio = round(yf.Ticker(ticker).info.get('trailingPE', 20.0), 2)
-        premium_available = 55  # <-- You can replace this with live options API later
+        stock_info = yf.Ticker(ticker).info
+        pe_ratio = round(stock_info.get('trailingPE', 20.0), 2)
+        earnings_date = stock_info.get('earningsDate', datetime.today() + timedelta(days=30))
+        if isinstance(earnings_date, list):  # Sometimes it's a list
+            earnings_date = earnings_date[0]
+        earnings_days_away = (pd.to_datetime(earnings_date) - pd.to_datetime(datetime.today())).days
+        ivr = 35  # Placeholder IVR value. Replace with live IV data later.
+        premium_available = 55  # Placeholder. Replace with live options data later.
 
-        ai_response = generate_strategy_recommendation(ticker, rsi, trend_direction, pe_ratio, premium_available)
+        # --- Score the Setup ---
+        score = score_trade_setup(rsi, trend_direction, ivr, premium_available, earnings_days_away)
+        st.markdown(f"**Custom Trade Score:** `{score}/100`")
+
+        # --- AI Opinion ---
+        ai_response = generate_strategy_recommendation(ticker, rsi, trend_direction, pe_ratio, premium_available, score)
         st.markdown(ai_response)
