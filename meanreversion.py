@@ -5,16 +5,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 import openai
 
-# --- Setup ---
+# --- Streamlit Config ---
 st.set_page_config(page_title="Mean Reversion Signal Tracker", layout="wide")
 st.title("🔁 Mean Reversion Signal Tracker")
+
+# --- Load API Key from Streamlit Secrets ---
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-# --- User Inputs ---
-ticker = st.text_input("Enter Ticker Symbol (e.g. SPY, AAPL):", "SPY")
-date_range = st.slider("Select Lookback Period (Days):", min_value=30, max_value=365, value=90)
-
-# --- ChatGPT Recommendation Function ---
+# --- AI Strategy Function ---
 def generate_strategy_recommendation(ticker, rsi, trend_direction, pe_ratio, premium_available):
     prompt = f"""
 You are a professional options strategist. A trader is considering selling a put credit spread on {ticker} with:
@@ -24,13 +22,13 @@ You are a professional options strategist. A trader is considering selling a put
 - Minimum Premium: $50
 - Exit Rules: 50% profit or 2x loss
 
-Current Data:
+Current Market Info:
 - RSI: {rsi}
-- Trend: {trend_direction}
+- Trend Direction: {trend_direction}
 - P/E Ratio: {pe_ratio}
 - Premium Available: ${premium_available}
 
-Give a concise recommendation on whether to take the trade. Use bullet points. Include pros/cons, and note if market conditions support mean reversion.
+Should they sell the put credit spread now? Respond with a clear YES or NO and explain in concise bullet points with pros and cons.
 """
 
     try:
@@ -42,6 +40,10 @@ Give a concise recommendation on whether to take the trade. Use bullet points. I
         return response.choices[0].message["content"]
     except Exception as e:
         return f"⚠️ ChatGPT error: {e}"
+
+# --- User Inputs ---
+ticker = st.text_input("Enter Ticker Symbol (e.g. SPY, AAPL):", "SPY")
+date_range = st.slider("Select Lookback Period (Days):", min_value=30, max_value=365, value=90)
 
 # --- Fetch Data ---
 if ticker:
@@ -104,6 +106,7 @@ if ticker:
         trend_direction = "uptrend" if df['20MA'].iloc[-1] > df['20MA'].iloc[-20] else "downtrend"
         rsi = round(latest['RSI'], 2)
         pe_ratio = round(yf.Ticker(ticker).info.get('trailingPE', 20.0), 2)
-        premium_available = 55  # Placeholder - can be replaced with options API in future
-        ai_recommendation = generate_strategy_recommendation(ticker, rsi, trend_direction, pe_ratio, premium_available)
-        st.markdown(ai_recommendation)
+        premium_available = 55  # <-- You can replace this with live options API later
+
+        ai_response = generate_strategy_recommendation(ticker, rsi, trend_direction, pe_ratio, premium_available)
+        st.markdown(ai_response)
